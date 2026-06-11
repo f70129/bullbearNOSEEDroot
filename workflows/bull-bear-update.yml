@@ -1,0 +1,50 @@
+name: Update Bull & Bear data
+
+# 每天台灣時間早上 7:00 (UTC 23:00) 自動更新;也可手動觸發
+on:
+  schedule:
+    - cron: "0 23 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bull-bear-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Calibrate weights (若有官方參考值)
+        working-directory: .
+        run: python calibrate.py
+
+      - name: Compute indicator
+        working-directory: .
+        run: python update_data.py
+
+      - name: Commit & push if changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/history.csv data/latest.json data/weights.json 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "No data changes."
+          else
+            git commit -m "chore: update bull & bear data ($(date -u +%Y-%m-%d))"
+            git push
+          fi
